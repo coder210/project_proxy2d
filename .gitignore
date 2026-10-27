@@ -1,0 +1,9 @@
+build/
+build*/
+.vs/
+CMakeLists.txt.user
+CMakeUserPresets.json
+compile_commands.json
+
+# 商用资源（私有）：不随代码仓库分发，由 scripts/fetch_assets.* 拉取
+assets/

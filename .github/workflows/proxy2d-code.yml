@@ -1,0 +1,38 @@
+name: proxy2d code CI
+
+# 代码 CI：不依赖商用资源（assets/ 被 .gitignore 忽略），
+# 代码仓库公开后可无限免费运行。
+on:
+  push:
+    paths:
+      - 'project_proxy2d/**'
+      - 'joy/**'
+      - 'SDL/**'
+      - 'msgpack/**'
+      - 'spine/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/proxy2d-code.yml'
+  pull_request:
+    paths:
+      - 'project_proxy2d/**'
+      - 'joy/**'
+      - 'SDL/**'
+      - 'msgpack/**'
+      - 'spine/**'
+      - 'CMakeLists.txt'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build project_proxy2d (code only)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake -DBUILD_PROJECT_PROXY2D=ON -S . -B build
+
+      - name: Build
+        run: cmake --build build --target project_proxy2d --config Debug
