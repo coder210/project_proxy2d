@@ -7,7 +7,7 @@ set -euo pipefail
 
 REPO="${1:-https://github.com/coder210/project_proxy2d-assets.git}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEST="$ROOT/project_proxy2d/assets"
+DEST="$ROOT/assets"
 
 if [ -d "$DEST/.git" ]; then
     echo "资源已存在，执行 pull：$DEST"
