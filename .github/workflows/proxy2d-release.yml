@@ -1,16 +1,19 @@
 name: proxy2d release
 
 # 发布 CI：先拉取私有商用资源，再打包。
-# 需要在仓库 Secrets 里配置 ASSETS_TOKEN（对私有资源仓有读权限的 PAT / deploy key）。
+# 需要仓库 Secrets 配置 ASSETS_TOKEN（对 project_proxy2d-assets 私有仓有 Contents:Read 权限）。
 on:
   push:
     tags:
       - 'proxy2d-v*'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   package:
-    name: Package project_proxy2d (with private assets)
+    name: Package (with private assets)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +27,7 @@ jobs:
           -Repo "https://x-access-token:${{ secrets.ASSETS_TOKEN }}@github.com/coder210/project_proxy2d-assets.git"
 
       - name: Configure
-        run: cmake -DBUILD_PROJECT_PROXY2D=ON -S . -B build
+        run: cmake -S . -B build
 
       - name: Build
         run: cmake --build build --target project_proxy2d --config Release
