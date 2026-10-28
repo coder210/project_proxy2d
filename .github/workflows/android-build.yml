@@ -1,0 +1,99 @@
+name: Build project_proxy2d for Android
+
+# 独立仓库：SDL 的 Android 工程位于 third_party/joy/SDL/android-project。
+# 游戏根 CMakeLists 从 app/ 向上 5 层（app -> android-project -> SDL -> joy -> third_party -> 仓库根）。
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # 引擎仓 joy 目前是私有：需要 SUBMODULE_TOKEN（对 joy 有 Contents:Read 的 PAT）。
+          # 引擎公开后这行可保留，会自动回落到 github.token。
+          token: ${{ secrets.SUBMODULE_TOKEN || github.token }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Copy build.gradle to SDL project
+        run: cp build.gradle third_party/joy/SDL/android-project/app/
+
+      - name: Patch build.gradle for standalone layout
+        run: |
+          cd third_party/joy/SDL/android-project/app/
+
+          # 游戏根 CMakeLists（5 层）
+          sed -i 's#\.\./\.\./\.\./CMakeLists.txt#../../../../../CMakeLists.txt#' build.gradle
+
+          # 传入 MOBILE_MAIN_DIR，游戏 CMake 据此推导 MOBILE_ASSETS_DIR
+          sed -i 's#-DANDROID_APP_PLATFORM=android-16"#-DANDROID_APP_PLATFORM=android-16", "-DMOBILE_MAIN_DIR=${System.getProperty("user.dir")}/app/src/main"#' build.gradle
+
+          grep -nE "path |arguments " build.gradle
+
+      - name: Add copyIcons task to build.gradle
+        run: |
+          cd third_party/joy/SDL/android-project/app/
+          cat >> build.gradle << 'EOF'
+
+          task copyIcons {
+              doLast {
+                  def densities = ['hdpi', 'mdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']
+                  def sourceFile = file('../../../../../logo.png')
+                  if (!sourceFile.exists()) {
+                      throw new GradleException("logo.png not found at ${sourceFile.absolutePath}")
+                  }
+                  densities.each { density ->
+                      def targetDir = file("src/main/res/mipmap-${density}")
+                      if (!targetDir.exists()) {
+                          targetDir.mkdirs()
+                      }
+                      copy {
+                          from sourceFile
+                          into targetDir
+                          rename '.*', 'ic_launcher.png'
+                      }
+                  }
+              }
+          }
+
+          preBuild.dependsOn copyIcons
+
+          if (project.hasProperty('appDisplayName')) {
+              android.defaultConfig {
+                  resValue "string", "app_name", project.appDisplayName
+              }
+          }
+
+          android.applicationVariants.all { variant ->
+              variant.outputs.all { output ->
+                  def targetName = project.hasProperty('targetName') ? project.targetName : 'Game'
+                  def buildType = variant.buildType.name
+                  outputFileName = "${targetName}-${buildType}.apk"
+              }
+          }
+          EOF
+
+      - name: Build APK
+        run: |
+          cd third_party/joy/SDL/android-project/
+          chmod +x gradlew
+          ./gradlew assembleDebug -PtargetName=project_proxy2d -PappDisplayName="Project Proxy 2D"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: project_proxy2d-debug
+          retention-days: 7
+          path: third_party/joy/SDL/android-project/app/build/outputs/apk/debug/project_proxy2d-debug.apk
