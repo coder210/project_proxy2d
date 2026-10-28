@@ -4,8 +4,6 @@ name: Build project_proxy2d for Windows
 # 由原 _ci/build.yml 的 build-win job 拆分而来；单仓库只构建本项目目标 project_proxy2d。
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
   pull_request:
 
 jobs:
