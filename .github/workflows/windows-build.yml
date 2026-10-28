@@ -1,0 +1,43 @@
+name: Build project_proxy2d for Windows
+
+# 桌面平台之一：Windows（x64 / ARM64 矩阵）。
+# 由原 _ci/build.yml 的 build-win job 拆分而来；单仓库只构建本项目目标 project_proxy2d。
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-win:
+    name: Build for Windows (${{ matrix.arch }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, ARM64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_TOKEN || github.token }}
+
+      - name: Configure
+        shell: cmd
+        run: |
+          cmake -DCMAKE_SYSTEM_NAME=Windows ^
+                -DCMAKE_SYSTEM_VERSION="10.0" ^
+                -A${{ matrix.arch }} ^
+                -S . -B build
+
+      - name: Build
+        run: cmake --build build --target project_proxy2d --config Release
+
+      - name: Upload Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: project_proxy2d-Windows-${{ matrix.arch }}
+          retention-days: 7
+          path: |
+            build/Release/**
