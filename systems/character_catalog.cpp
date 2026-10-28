@@ -24,7 +24,7 @@ void CharacterCatalog::setBuiltinDefault()
     d.name = "Survivor A";
     d.max_hp = 100;
     d.move_speed = fp_from_float(2.4f);
-    d.sprite_dir = "project_proxy2d/sprites/characters/survivor_a/";
+    d.sprite_dir = "sprites/characters/survivor_a/";
     d.starting_weapon = "knife";
     d.weapons.push_back("dagger");   // 兜底内置表仅授权匕首（与真实 weapons.json 的 key 一致）
     d.anims[ANIM_IDLE].file   = "idle";

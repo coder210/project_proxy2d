@@ -14,8 +14,8 @@ static void map_log_load(const char* source, int level);
 // 用编译期内嵌 ASCII 填充运行时碰撞/出生网格（前向声明；定义见下）
 
 // jtilemap 渲染资源根：贴图路径经 default_remap 剥掉 ../ 后拼在此前缀之后。
-// 与 adventure2d 的 adventure2d/ 用法一致，且和 resources.json 的 project_proxy2d/... 同一套相对根。
-static constexpr const char* MAP_ASSET_BASE = "project_proxy2d/";
+// 与 adventure2d 的 adventure2d/ 用法一致，且和 resources.json 的 ... 同一套相对根。
+static constexpr const char* MAP_ASSET_BASE = "";
 static void map_build_ascii_grid(int level);
 
 // ============================================================
@@ -153,7 +153,7 @@ static jtilemap_object_layer_p map_find_spawn_layer(jtilemap_p tm)
 static bool map_load_from_tilemap(int level)
 {
     // 关卡 .lua 路径统一走资源索引：category="maps"、id="level<N>"。
-    // 原实现在此遍历 3 个候选前缀（"levels/"、"project_proxy2d/levels/"、"../project_proxy2d/levels/"），
+    // 原实现在此遍历 3 个候选前缀（"levels/"、"levels/"、"../levels/"），
     // 现由 AssetManager 单点解析（索引缺失时回退内置默认路径），路径真源只剩 resources.json 一处。
     char map_id[32];
     snprintf(map_id, sizeof(map_id), "level%d", level);

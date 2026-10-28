@@ -15,11 +15,11 @@ AssetManager::AssetManager()
 {
 	// 内置默认路径：resources.json 缺失/解析失败时的兜底，保证游戏仍可运行。
 	// 真源是 resources.json，加载成功后会逐条覆盖这里的值。
-	resource_paths_[std::string(kCatFonts) + "/simhei"] = "project_proxy2d/fonts/simhei.ttf";
+	resource_paths_[std::string(kCatFonts) + "/simhei"] = "fonts/simhei.ttf";
 	for (int i = 1; i <= kDefaultLevelCount; i++) {
 		char key[32], val[128];
 		snprintf(key, sizeof(key), "%s/level%d", kCatMaps, i);
-		snprintf(val, sizeof(val), "project_proxy2d/levels/level%d.lua", i);
+		snprintf(val, sizeof(val), "levels/level%d.lua", i);
 		resource_paths_[key] = val;
 	}
 

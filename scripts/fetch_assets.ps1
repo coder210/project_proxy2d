@@ -1,4 +1,4 @@
-# Fetch the private commercial assets for project_proxy2d into project_proxy2d/assets/
+# Fetch the private commercial assets for project_proxy2d into assets/ (private repo restructured to root, no project_proxy2d/ wrapper)
 # Usage:
 #   ./scripts/fetch_assets.ps1
 #   ./scripts/fetch_assets.ps1 -Repo "https://x-access-token:<TOKEN>@github.com/<you>/project_proxy2d-assets.git"

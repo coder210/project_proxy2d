@@ -107,7 +107,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[])
         r2d_set_logical_presentation_mode(ctx->r2d, 480, 320, JOY_LOGICAL_PRESENTATION_LETTERBOX);
 
         // 设置窗口图标（logo.png 位于 textures 目录下）
-        window_set_icon(ctx->window, "project_proxy2d/branding/logo.png");
+        window_set_icon(ctx->window, "branding/logo.png");
 
         // 应用全屏设置
         if (ctx->settings.fullscreen) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 拉取 project_proxy2d 的私有商用资源到 project_proxy2d/assets/
+# 拉取 project_proxy2d 的私有商用资源到 assets/（私有仓已上移根目录，无 project_proxy2d/ 包裹）
 # 用法：
 #   ./scripts/fetch_assets.sh
 #   ./scripts/fetch_assets.sh "https://x-access-token:<TOKEN>@github.com/<you>/project_proxy2d-assets.git"
