@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- CoreCLR 宿主：与 Joy.Bindings 一致用 net8.0 -->
+    <TargetFramework>net8.0</TargetFramework>
+    <!-- RID 由 publish 时的 `-r <rid>` 显式指定，这里不预先声明 RuntimeIdentifiers：
+     * 声明了会让 restore 为全部 RID 解析 runtime/host pack，离线构建（本地 nupkg 源）
+     * 就必须为每个 RID 都备包。改为按需解析，离线只需目标 RID 的包。
+     * 函数指针表绑定需要 unsafe。 -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>JoyGame</AssemblyName>
+    <RootNamespace>JoyGame</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- 关掉 SDK 的默认 None glob：避免把 CSharp/ 之外的文件误挂进本工程。
+         native 宿主在仓根（main.cpp / clr_host.cpp），本目录只放 C# 源码；
+         编译项在下方 ItemGroup 显式列出。 -->
+    <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+    <!-- joy 的 C# 绑定项目位置：引擎在仓根的 third_party/joy，
+         绑定模块在 <joy>/modules/cs。 -->
+    <JoyCSharpDir Condition="'$(JoyCSharpDir)' == ''">$(MSBuildProjectDirectory)/../third_party/joy/modules/cs</JoyCSharpDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 所有 Joy.* 声明由 joy 子项目的 Joy.Bindings.csproj 提供（程序集引用） -->
+    <ProjectReference Include="$(JoyCSharpDir)/Joy.Bindings.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 模板运行时骨架 -->
+    <Compile Include="runtime\**\*.cs" />
+    <!-- 示例玩法 -->
+    <Compile Include="game\**\*.cs" />
+    <!-- 无窗口冒烟脚本 -->
+    <Compile Include="test\**\*.cs" />
+  </ItemGroup>
+</Project>

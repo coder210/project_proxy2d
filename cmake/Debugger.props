@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- 本工程是 native 瘦宿主，JoyGame.dll 由宿主进程内经 hostfxr 加载。
+       纯 native 调试绑不上托管断点，故固定使用 混合(.NET Core) 引擎。 -->
+  <PropertyGroup>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerDebuggerType>NativeWithManagedCore</LocalDebuggerDebuggerType>
+  </PropertyGroup>
+</Project>

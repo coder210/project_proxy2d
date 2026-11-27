@@ -1,0 +1,9 @@
+{
+  "runtimeOptions": {
+    "tfm": "net8.0",
+    "configProperties": {
+      "System.GC.Server": false,
+      "System.Runtime.InteropServices.BuiltInComInterop.IsSupported": false
+    }
+  }
+}

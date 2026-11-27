@@ -11,6 +11,19 @@ CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
 
+# 构建输出
+build/
+build*/
+.vs/
+
+# .NET 构建产物（CSharp）
+CSharp/bin/
+CSharp/obj/
+CSharp/out/
+
+# 本地实验/构建目录（下划线开头，非源码）
+_*/
+
 # CLion
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
