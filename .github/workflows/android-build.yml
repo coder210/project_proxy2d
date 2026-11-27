@@ -101,6 +101,8 @@ jobs:
       - name: Verify APK contents
         run: |
           apk=third_party/joy/SDL/android-project/app/build/outputs/apk/debug/project_proxy2d-debug.apk
+          echo "--- app/libs on disk ---"
+          ls -la third_party/joy/SDL/android-project/app/libs/arm64-v8a/ || true
           echo "--- lib/ ---"
           unzip -Z1 "$apk" | grep -E '^lib/.*\.so$' || true
           echo "--- assets (top) ---"

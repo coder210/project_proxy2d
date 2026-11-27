@@ -346,10 +346,11 @@ if(JOY_MODULE_CS AND TARGET joy_module_cs AND NOT EMSCRIPTEN)
             message(FATAL_ERROR "MonoVM 暂存目录没有 libSystem.*.so：${_clr_bin}")
         endif()
         set(_clr_so_files "${MONO_LIBRARIES}" ${_clr_shims})
-        # Gradle 的 jniLibs.srcDir 'libs' 相对的是 **app 模块目录**（.../app/libs），
-        # 不是 app/src/libs。MOBILE_MAIN_DIR = .../app/src/main，
-        # MOBILE_ASSETS_DIR = .../app/src/main/assets，两者向上两级才是 app。
-        get_filename_component(_gradle_app_dir "${MOBILE_ASSETS_DIR}/../.." ABSOLUTE)
+        # Gradle 的 jniLibs.srcDir 'libs' 相对的是 **app 模块目录**（.../app/libs）。
+        # MOBILE_ASSETS_DIR = .../app/src/main/assets，必须向上 **三级** 才是 app：
+        #   assets -> main -> src -> app
+        get_filename_component(_gradle_app_dir "${MOBILE_ASSETS_DIR}/../../.." ABSOLUTE)
+        message(STATUS "Android APK jniLibs 目录 = ${_gradle_app_dir}/libs/${ANDROID_ABI}")
         set(_apk_libs "${CMAKE_BINARY_DIR}/lib/${ANDROID_ABI}"
                       "${_gradle_app_dir}/libs/${ANDROID_ABI}")
         foreach(_apk_lib IN LISTS _apk_libs)
