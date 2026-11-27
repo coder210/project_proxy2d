@@ -37,10 +37,7 @@ jobs:
           # 游戏根 CMakeLists（5 层）
           sed -i 's#\.\./\.\./\.\./CMakeLists.txt#../../../../../CMakeLists.txt#' build.gradle
 
-          # 传入 MOBILE_MAIN_DIR，游戏 CMake 据此推导 MOBILE_ASSETS_DIR
-          sed -i 's#-DANDROID_APP_PLATFORM=android-16"#-DANDROID_APP_PLATFORM=android-16", "-DMOBILE_MAIN_DIR=${System.getProperty("user.dir")}/app/src/main"#' build.gradle
-
-          grep -nE "path |arguments " build.gradle
+          grep -nE "path |arguments |abiFilters" build.gradle
 
       - name: Add copyIcons task to build.gradle
         run: |
@@ -98,6 +95,26 @@ jobs:
           cd third_party/joy/SDL/android-project/
           chmod +x gradlew
           ./gradlew assembleDebug -PtargetName=project_proxy2d -PappDisplayName="Project Proxy 2D"
+
+      # 启动闪退最常见原因是 APK 里缺 MonoVM 原生库或托管程序集。
+      # 这里直接校验产物内容，避免"构建成功但装上就闪退"。
+      - name: Verify APK contents
+        run: |
+          apk=third_party/joy/SDL/android-project/app/build/outputs/apk/debug/project_proxy2d-debug.apk
+          echo "--- lib/ ---"
+          unzip -Z1 "$apk" | grep -E '^lib/.*\.so$' || true
+          echo "--- assets (top) ---"
+          unzip -Z1 "$apk" | grep -E '^assets/(JoyGame\.dll|lib/Joy\.Bindings\.dll|lib/System\.Private\.CoreLib\.dll)$' || true
+          for f in \
+            lib/arm64-v8a/libmain.so \
+            lib/arm64-v8a/libmonosgen-2.0.so \
+            lib/arm64-v8a/libSystem.Native.so \
+            assets/JoyGame.dll \
+            assets/lib/Joy.Bindings.dll \
+            assets/lib/System.Private.CoreLib.dll; do
+            unzip -Z1 "$apk" | grep -qx "$f" \
+              || { echo "::error::APK 缺少 $f（启动会直接闪退）"; exit 1; }
+          done
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

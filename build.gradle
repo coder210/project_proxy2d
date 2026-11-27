@@ -20,8 +20,9 @@ android {
         externalNativeBuild {
             cmake {
                 arguments "-DANDROID_APP_PLATFORM=android-16", "-DANDROID_STL=c++_static", "-DCMAKE_VERBOSE_MAKEFILE=ON", "-DMOBILE_ASSETS_DIR=${System.getProperty("user.dir")}/app/src/main/assets"
-                // abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
-                // abiFilters 'arm64-v8a'
+                // joy 的 Android MonoVM runtime pack 只暂存 arm64，构建其它 ABI 会
+                // 把 arm64 的 libmonosgen 塞进 x86_64/armv7 目录，运行期 dlopen 失败闪退。
+                abiFilters 'arm64-v8a'
             }
         }
     }
@@ -32,8 +33,15 @@ android {
         }
     }
     applicationVariants.all { variant ->
-        tasks["merge${variant.name.capitalize()}Assets"]
-                .dependsOn("externalNativeBuild${variant.name.capitalize()}")
+        def cap = variant.name.capitalize()
+        tasks["merge${cap}Assets"]
+                .dependsOn("externalNativeBuild${cap}")
+        // CMake 的 POST_BUILD 才把 libmonosgen-2.0.so / libSystem.*.so 写进
+        // app/libs/<abi>；原生库合并必须排在 CMake 之后，否则这些 .so 不会进 APK，
+        // 启动时 dlopen 失败 → 直接闪退。
+        tasks.matching { it.name == "merge${cap}NativeLibs" }.configureEach {
+            dependsOn "externalNativeBuild${cap}"
+        }
     }
     if (!project.hasProperty('EXCLUDE_NATIVE_LIBS')) {
         sourceSets.main {

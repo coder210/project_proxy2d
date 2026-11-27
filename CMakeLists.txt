@@ -161,7 +161,24 @@ endif()
 # ---------- native 瘦宿主 ----------
 # Android 的 APK 入口库必须叫 main；桌面用项目名。
 if(ANDROID)
-    set(MOBILE_ASSETS_DIR "${MOBILE_MAIN_DIR}/assets")
+    # build.gradle 始终会传 MOBILE_ASSETS_DIR（app/src/main/assets）；MOBILE_MAIN_DIR
+    # 只有 CI 补丁才传，本地 Android Studio 构建通常没有，不能依赖它。
+    if(NOT MOBILE_ASSETS_DIR)
+        if(MOBILE_MAIN_DIR)
+            set(MOBILE_ASSETS_DIR "${MOBILE_MAIN_DIR}/assets")
+        else()
+            message(FATAL_ERROR
+                "Android 构建缺少 MOBILE_ASSETS_DIR：请在 build.gradle 的 cmake "
+                "arguments 里传 -DMOBILE_ASSETS_DIR=<app/src/main/assets>")
+        endif()
+    endif()
+    # joy_monovm_stage() 只解包 arm64 的 runtime pack，构建其它 ABI 会把 arm64 的
+    # libmonosgen/libSystem 塞进对应目录，运行期 dlopen 必然失败（启动即闪退）。
+    if(NOT ANDROID_ABI STREQUAL "arm64-v8a")
+        message(FATAL_ERROR
+            "当前 joy 的 Android MonoVM 仅暂存 arm64-v8a（见 cmake/JoyMonoVm.cmake），"
+            "请在 build.gradle 里设置 abiFilters 'arm64-v8a'。当前 ANDROID_ABI=${ANDROID_ABI}")
+    endif()
     message(STATUS "MOBILE_ASSETS_DIR = '${MOBILE_ASSETS_DIR}'")
     set(EXECUTABLE_NAME "main")
     add_library(${EXECUTABLE_NAME} SHARED)
@@ -194,6 +211,12 @@ joy_add_sources(${EXECUTABLE_NAME})
 
 # 项目根目录（clr_host.cpp 里 third_party/joy/... 的相对包含）
 target_include_directories(${EXECUTABLE_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+
+# Android 启动闪退诊断：打开后每个启动阶段弹系统对话框（默认关闭）。
+option(JOY_BOOT_PROBE "Android 启动闪退诊断：逐阶段弹窗" OFF)
+if(JOY_BOOT_PROBE AND ANDROID)
+    target_compile_definitions(${EXECUTABLE_NAME} PRIVATE JOY_ENABLE_BOOT_PROBE)
+endif()
 
 # CoreCLR 桌面宿主：把系统 dotnet root / hostfxr 路径传给 jcsx.c。
 if(JOY_MODULE_CS AND NOT ANDROID)
@@ -316,12 +339,19 @@ if(JOY_MODULE_CS AND TARGET joy_module_cs AND NOT EMSCRIPTEN)
 
         # MonoVM 主库 + libSystem.* shim 必须进 APK 的 lib/<abi>（assets 里的 .so 不可 dlopen）。
         file(GLOB _clr_shims "${_clr_bin}/libSystem.*.so")
-        set(_clr_so_files "${MONO_LIBRARIES}" ${_clr_shims})
-        set(_apk_libs "${CMAKE_BINARY_DIR}/lib/${ANDROID_ABI}")
-        if(MOBILE_MAIN_DIR)
-            get_filename_component(_gradle_app_dir "${MOBILE_MAIN_DIR}/.." ABSOLUTE)
-            list(APPEND _apk_libs "${_gradle_app_dir}/libs/${ANDROID_ABI}")
+        if(NOT _clr_lib_files)
+            message(FATAL_ERROR "MonoVM 暂存目录没有 BCL：${_clr_bin}/libs（先 configure 解包 runtime pack）")
         endif()
+        if(NOT _clr_shims)
+            message(FATAL_ERROR "MonoVM 暂存目录没有 libSystem.*.so：${_clr_bin}")
+        endif()
+        set(_clr_so_files "${MONO_LIBRARIES}" ${_clr_shims})
+        # Gradle 的 jniLibs.srcDir 'libs' 相对的是 **app 模块目录**（.../app/libs），
+        # 不是 app/src/libs。MOBILE_MAIN_DIR = .../app/src/main，
+        # MOBILE_ASSETS_DIR = .../app/src/main/assets，两者向上两级才是 app。
+        get_filename_component(_gradle_app_dir "${MOBILE_ASSETS_DIR}/../.." ABSOLUTE)
+        set(_apk_libs "${CMAKE_BINARY_DIR}/lib/${ANDROID_ABI}"
+                      "${_gradle_app_dir}/libs/${ANDROID_ABI}")
         foreach(_apk_lib IN LISTS _apk_libs)
             add_custom_command(TARGET ${EXECUTABLE_NAME} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${_apk_lib}"

@@ -4,6 +4,7 @@
 #include <SDL3/SDL_loadso.h>
 #include <joy/joy.h>
 #include "third_party/joy/modules/cs/joy_csharp.h"
+#include "third_party/joy/modules/cs/jprobe.h"   /* Android 启动阶段弹窗诊断；桌面编译为空 */
 
 #include <cstdio>
 #include <cstdlib>
@@ -162,8 +163,17 @@ static bool setup_clr_dirs()
 
 bool clr_host_init(int argc, char* argv[])
 {
+    JPROBE("H1 clr_host_init entered");
+#if defined(JOY_ANDROID)
+    /* 与 joy examples/csharp_host 的 joy_examples_setup_mobile_display() 对齐：
+     * 必须在 JoyGame 建窗之前设置，否则 Android 侧按系统/用户方向锁定，
+     * 横版 480x320 只能占竖屏中的窄条。 */
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+#endif
     align_working_dir(argc > 0 ? argv[0] : NULL);
+    JPROBE("H2 before setup_clr_dirs (unpack DLLs from assets)");
     if (!setup_clr_dirs()) return false;
+    JPROBE("H3 after setup_clr_dirs (DLLs unpacked OK)");
 
     int i = find_arg(argc, argv, "--smoke");
     if (i >= 0 && i + 1 < argc) s_smoke_frames = std::atoi(argv[i + 1]);
@@ -199,15 +209,21 @@ bool clr_host_init(int argc, char* argv[])
     }
 
     SDL_Log("[cs] creating CoreCLR, assembly=%s", s_assembly);
+    JPROBE("H4 before csx_create (see P1-P10 inside)");
     s_csx = csx_create();
+    JPROBE("H5 after csx_create");
     if (!s_csx) {
+        JPROBE("H5-FAIL csx_create returned NULL");
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[cs] csx_create failed");
         return false;
     }
+    JPROBE("H6 before csx_load_assembly");
     if (!csx_load_assembly(s_csx, s_assembly)) {
+        JPROBE("H6-FAIL csx_load_assembly failed");
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[cs] load assembly failed: %s", s_assembly);
         return false;
     }
+    JPROBE("H7 after csx_load_assembly");
 
     /* 入口契约见 joy modules/cs/joy_cs_entry.h：JoyGame.JoyEntry.OnInit/OnFrame/OnShutdown */
     s_on_init = csx_find_method(s_csx, "JoyGame", "JoyEntry", "OnInit", 3);
@@ -222,7 +238,9 @@ bool clr_host_init(int argc, char* argv[])
         int w = APP_W, h = APP_H, smoke = s_smoke_frames;
         void* args[3] = { &w, &h, &smoke };
         SDL_Log("[host] calling C# JoyEntry.OnInit(w=%d,h=%d,smoke=%d)", w, h, smoke);
+        JPROBE("H8 before calling C# JoyEntry.OnInit");
         csx_invoke_method(s_csx, s_on_init, args);
+        JPROBE("H9 after C# JoyEntry.OnInit returned");
     }
 
     s_last_tick_ns = SDL_GetTicksNS();
