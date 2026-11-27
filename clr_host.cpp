@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#if defined(_WIN32)
+#if defined(JOY_WIN)
 #  include <direct.h>
 #else
 #  include <unistd.h>
@@ -54,7 +54,7 @@ static void align_working_dir(const char* argv0)
     char dir[1024];
     std::memcpy(dir, argv0, n);
     dir[n] = '\0';
-#if defined(_WIN32)
+#if defined(JOY_WIN)
     (void)_chdir(dir);
 #else
     (void)chdir(dir);
@@ -133,7 +133,7 @@ static bool setup_clr_dirs()
     setenv("MONO_LIB_DIR", pref, 1);
     SDL_Log("[cs] CLR dirs: %s", pref);
     SDL_free(pref);
-#elif defined(_WIN32)
+#elif defined(JOY_WIN)
     _putenv_s("MONO_LIB_DIR", "lib");
 #else
     setenv("MONO_LIB_DIR", "lib", 1);
