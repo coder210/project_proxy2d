@@ -41,6 +41,9 @@ static int find_arg(int argc, char* argv[], const char* name)
  * CLR 因找不到 CoreLib 而启动失败。 */
 static void align_working_dir(const char* argv0)
 {
+#if defined(__ANDROID__)
+    (void)argv0;
+#else
     if (!argv0 || !*argv0) return;
     const char* sep = NULL;
     for (const char* p = argv0; *p; ++p)
@@ -56,11 +59,81 @@ static void align_working_dir(const char* argv0)
 #else
     (void)chdir(dir);
 #endif
+#endif
 }
+
+#if defined(__ANDROID__)
+/* APK 的 assets/ 是压缩数据，不是文件系统目录；mono_set_dirs() 与
+ * mono_set_assemblies_path() 要真实路径。首次启动把程序集从 assets 解到内部
+ * 存储，再把两条路径都指过去。清单与 CMakeLists.txt 的部署保持一致。 */
+static const char* const kAndroidClrLibs[] = {
+    /* 核心（缺任一 mono_jit_init 直接 abort） */
+    "System.Private.CoreLib.dll", "netstandard.dll",
+    "System.Runtime.dll", "System.Collections.dll", "mscorlib.dll",
+    /* JoyGame / Joy.Bindings 实际用到的命名空间 */
+    "System.IO.dll", "System.IO.FileSystem.dll", "System.IO.FileSystem.Primitives.dll",
+    "System.Reflection.dll", "System.Reflection.Extensions.dll", "System.Reflection.Primitives.dll",
+    "System.Globalization.dll", "System.Globalization.Extensions.dll",
+    "System.Text.Encoding.dll", "System.Text.Encoding.Extensions.dll",
+    "System.Runtime.InteropServices.dll", "System.Runtime.Extensions.dll",
+    "System.Linq.dll", "System.Linq.Expressions.dll",
+    "System.Threading.dll", "System.Threading.Tasks.dll", "System.Threading.Thread.dll",
+    "System.Diagnostics.Debug.dll", "System.Diagnostics.Tools.dll",
+    "System.Memory.dll", "System.Collections.Concurrent.dll",
+    "System.Runtime.Serialization.Primitives.dll", "System.ComponentModel.Primitives.dll",
+    "System.Runtime.CompilerServices.Unsafe.dll", "System.Console.dll",
+    "Joy.Bindings.dll", "JoyGame.dll", NULL   /* TPA 也需要 JoyGame.dll 本体 */
+};
+
+static bool copy_android_clr_lib(const char* dir, const char* name)
+{
+    char src[512], dst[512];
+    /* BCL/Joy.Bindings 在 assets/lib/；JoyGame.dll 在 assets 根。 */
+    std::snprintf(src, sizeof(src), "lib/%s", name);
+    size_t size = 0;
+    void* data = SDL_LoadFile(src, &size);
+    if (!data) {
+        std::snprintf(src, sizeof(src), "%s", name);
+        data = SDL_LoadFile(src, &size);
+    }
+    std::snprintf(dst, sizeof(dst), "%s%s", dir, name);
+    if (!data) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                     "[cs] read asset %s failed: %s", src, SDL_GetError());
+        return false;
+    }
+    bool ok = SDL_SaveFile(dst, data, size);
+    if (!ok)
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                     "[cs] write %s failed: %s", dst, SDL_GetError());
+    SDL_free(data);
+    return ok;
+}
+#endif
 
 static bool setup_clr_dirs()
 {
-#if defined(_WIN32)
+#if defined(__ANDROID__)
+    char* pref = SDL_GetPrefPath("proxy2d", "project_proxy2d");
+    if (!pref) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[cs] SDL_GetPrefPath failed: %s", SDL_GetError());
+        return false;
+    }
+    for (int i = 0; kAndroidClrLibs[i]; ++i) {
+        /* 少一个 BCL，mono_jit_init() 就因找不到 CoreLib 直接 abort，必须立刻终止。 */
+        if (!copy_android_clr_lib(pref, kAndroidClrLibs[i])) {
+            SDL_free(pref);
+            return false;
+        }
+    }
+    /* JOY_CLR_LIB_DIR 由 jcsx.c 的 Android mono embedding 读取，传给
+     * mono_set_assemblies_path 定位 BCL/JoyGame.dll/Joy.Bindings.dll。 */
+    setenv("JOY_CLR_LIB_DIR", pref, 1);
+    setenv("MONO_PATH", pref, 1);
+    setenv("MONO_LIB_DIR", pref, 1);
+    SDL_Log("[cs] CLR dirs: %s", pref);
+    SDL_free(pref);
+#elif defined(_WIN32)
     _putenv_s("MONO_LIB_DIR", "lib");
 #else
     setenv("MONO_LIB_DIR", "lib", 1);

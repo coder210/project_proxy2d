@@ -1,0 +1,188 @@
+﻿name: Desktop (Windows / Linux / macOS)
+
+# 照搬 joy examples 的 .github/workflows/desktop.yml：一个 workflow 用 matrix
+# 覆盖 Win/Linux/macOS，每个 job 构建本项目单一 target project_proxy2d
+# （游戏逻辑/渲染全在 CSharp/，C++ 只是加载 CLR 的瘦宿主）。
+# 模板仓按平台拆文件；这里用 matrix 收敛成 1 个文件、3 个 job。
+#
+# 与 joy 原版的差异（本项目特有，非偷懒）：
+#   - 去掉 3 个 gate 脚本（gen_bindings.js / audit_domain_*）——本项目不涉及绑定生成/领域审计；
+#   - target 从 example_cpp/lua/js/csharp 四目标收敛为 project_proxy2d 单目标；
+#   - 保留 macOS 的 Ad-Hoc Codesign + DMG（本项目要发 .app 包）。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: ${{ matrix.name }} / Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            name: Windows / VS2022 / x64
+            gen: 'Visual Studio 17 2022'
+            extra: '-Ax64'
+          - os: ubuntu-24.04
+            name: Linux / x64
+            gen: 'Ninja'
+            extra: ''
+          # macos-14 在本仓库已被 GitHub 判定为不支持的配置
+          # （"The configuration 'macos-14-arm64-us-default' is not supported"，
+          #  job 会在 0 步直接 cancelled，导致整个 run 显示 cancelled）。
+          - os: macos-15
+            name: macOS / arm64
+            gen: 'Ninja'
+            # 只有 macos-arm64 runtime pack，双架构会在链接 x86_64 切片时失败。
+            extra: '-DCMAKE_OSX_ARCHITECTURES=arm64'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_TOKEN || github.token }}
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # 引擎自带 SDL 在 Linux 从源码编译，依赖清单来自 joy 的模板。
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt update
+          sudo apt install -y --no-install-recommends build-essential git cmake ninja-build \
+            gnome-desktop-testing libasound2-dev libpulse-dev libaudio-dev libjack-dev \
+            libsndio-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+            libxi-dev libxss-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev \
+            fcitx-libs-dev libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev \
+            libxtst-dev
+
+      - name: Ensure Ninja (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: command -v ninja >/dev/null || brew install ninja
+
+      - name: Configure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build \
+            -G "${{ matrix.gen }}" ${{ matrix.extra }} \
+            -DCMAKE_BUILD_TYPE=Release 2>&1 | tee configure.log
+
+      # 全新 checkout 没有 obj/：命令行 dotnet build 不会隐式 restore。
+      # CMake 已把 restore 串进依赖链，这里显式再跑一次（幂等）。
+      - name: Restore C# projects
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore CSharp/JoyGame.csproj 2>&1 | tee restore.log
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build build --config Release --target project_proxy2d 2>&1 | tee build.log
+
+      # --smoke 是 headless 自检：固定帧数模拟按键跑完菜单/战斗/结算后打印
+      # "smoke finished" 并退出。Linux runner 无显示服务，用 SDL3 offscreen 驱动
+      # 提供可创建窗口/渲染目标的软后端。
+      # 宿主会把 CWD 对齐到 exe 目录；这里从仓库根启动以覆盖相对路径解析回归。
+      # macOS 是 .app bundle，可执行文件在 Contents/MacOS/ 内（非 build/Release 根）。
+      - name: Smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=build/Release
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            exe="$out/project_proxy2d.exe"
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            exe="$out/project_proxy2d.app/Contents/MacOS/project_proxy2d"
+          else
+            exe="$out/project_proxy2d"
+            export SDL_VIDEODRIVER=offscreen
+            export SDL_AUDIODRIVER=dummy
+          fi
+          test -x "$exe" || { echo "::error::smoke exe not found: $exe"; exit 1; }
+          ( cd "$GITHUB_WORKSPACE" && "./$exe" --smoke 60 ) 2>&1 | tee smoke.log
+          grep -Fq 'smoke finished' smoke.log \
+            || { echo "::error::project_proxy2d smoke did not finish"; exit 1; }
+          # 自包含部署：确认运行时随包（hostfxr/coreclr + 裁剪后的 BCL），玩家无需装 .NET。
+          grep -Fq 'command-line mode' smoke.log \
+            || { echo "::error::did not load self-contained CoreCLR (command-line mode)"; exit 1; }
+          if [ "$RUNNER_OS" != "macOS" ]; then
+            bcl=$(find "$out" -maxdepth 1 -name 'System.*.dll' | wc -l)
+            echo "deployed BCL count: $bcl (whitelist ~29, not full 161)"
+            [ "$bcl" -lt 60 ] || { echo "::error::BCL not pruned (found $bcl)"; exit 1; }
+          fi
+
+      - name: Ad-Hoc Codesign (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: codesign -s - -f "./build/Release/project_proxy2d.app" --deep
+
+      - name: Create DMG (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cd build
+          hdiutil create -volname project_proxy2d_apple_macOS \
+            -srcfolder Release \
+            project_proxy2d_apple_macOS.dmg
+
+      - name: Upload build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: project_proxy2d-${{ matrix.os }}
+          # RUNTIME/RESOURCE 输出统一在 build/Release/（含 exe、CSharp 的
+          # JoyGame.dll、coreclr 运行时与各资源目录）。
+          path: |
+            build/Release/**
+          if-no-files-found: error
+          retention-days: 7
+
+      # 公开仓库匿名读不到 job 日志 / artifact；把编译错误行转成 annotation。
+      - name: Surface build errors
+        if: failure()
+        shell: bash
+        run: |
+          set -uo pipefail
+          logs=(configure.log restore.log build.log smoke.log)
+          present=()
+          for f in "${logs[@]}"; do
+            [ -f "$f" ] && present+=("$f")
+          done
+          if [ ${#present[@]} -eq 0 ]; then exit 0; fi
+          {
+            (grep -nE 'error:|fatal error:|undefined reference|ninja: build stopped|CMake Error|error MSB|error LNK|Error [0-9]+' "${present[@]}" || true) | head -30
+            tail -n 12 <(cat "${present[@]}")
+          } > /tmp/proxy-errors.txt
+          while IFS= read -r line; do
+            line="${line//%/%25}"
+            line="${line//$'\r'/%0D}"
+            echo "::error::$line"
+          done < /tmp/proxy-errors.txt
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: project_proxy2d-logs-${{ matrix.os }}
+          path: |
+            *.log
+            build/CMakeFiles/CMake*.log
+          if-no-files-found: warn
+          retention-days: 7
