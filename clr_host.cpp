@@ -41,7 +41,7 @@ static int find_arg(int argc, char* argv[], const char* name)
  * CLR 因找不到 CoreLib 而启动失败。 */
 static void align_working_dir(const char* argv0)
 {
-#if defined(__ANDROID__)
+#if defined(JOY_ANDROID)
     (void)argv0;
 #else
     if (!argv0 || !*argv0) return;
@@ -62,7 +62,7 @@ static void align_working_dir(const char* argv0)
 #endif
 }
 
-#if defined(__ANDROID__)
+#if defined(JOY_ANDROID)
 /* APK 的 assets/ 是压缩数据，不是文件系统目录；mono_set_dirs() 与
  * mono_set_assemblies_path() 要真实路径。首次启动把程序集从 assets 解到内部
  * 存储，再把两条路径都指过去。清单与 CMakeLists.txt 的部署保持一致。 */
@@ -113,7 +113,7 @@ static bool copy_android_clr_lib(const char* dir, const char* name)
 
 static bool setup_clr_dirs()
 {
-#if defined(__ANDROID__)
+#if defined(JOY_ANDROID)
     char* pref = SDL_GetPrefPath("proxy2d", "project_proxy2d");
     if (!pref) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[cs] SDL_GetPrefPath failed: %s", SDL_GetError());
