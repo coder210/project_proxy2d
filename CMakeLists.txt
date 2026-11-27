@@ -113,6 +113,18 @@ if(NOT EMSCRIPTEN)
             get_filename_component(_fxr_host2 "${_fxr_host}" DIRECTORY)
             get_filename_component(JOY_DOTNET_ROOT "${_fxr_host2}" DIRECTORY)
         endif()
+    elseif(APPLE)
+        if(NOT JOY_HOSTFXR_DLL)
+            file(GLOB _hostfxr_candidates
+                "/usr/local/share/dotnet/host/fxr/*/libhostfxr.dylib"
+                "/usr/share/dotnet/host/fxr/*/libhostfxr.dylib"
+                "$ENV{DOTNET_ROOT}/host/fxr/*/libhostfxr.dylib"
+                "$ENV{HOME}/.dotnet/host/fxr/*/libhostfxr.dylib"
+                "${_clr_plat}/libhostfxr.dylib")
+            if(_hostfxr_candidates)
+                list(GET _hostfxr_candidates -1 JOY_HOSTFXR_DLL)
+            endif()
+        endif()
     elseif(UNIX AND NOT ANDROID)
         if(NOT JOY_HOSTFXR_DLL)
             file(GLOB _hostfxr_candidates
@@ -216,32 +228,27 @@ foreach(_file ${ALL_ASSET_FILES})
     endif()
 endforeach()
 
-if(APPLE AND NOT ANDROID)
-    foreach(_asset ${ASSET_FILES})
-        get_filename_component(_dir "${_asset}" DIRECTORY)
-        target_sources(${EXECUTABLE_NAME} PRIVATE "${ASSETS_ROOT}/${_asset}")
-        set_property(SOURCE "${ASSETS_ROOT}/${_asset}" PROPERTY
-            MACOSX_PACKAGE_LOCATION "Resources/${_dir}")
-    endforeach()
-else()
-    if(UNIX AND NOT APPLE AND NOT ANDROID)
+if(NOT ANDROID)
+    if(UNIX AND NOT APPLE)
         target_link_libraries(${EXECUTABLE_NAME} PRIVATE m)
     endif()
-    foreach(_asset ${ASSET_FILES})
-        get_filename_component(_rel_dir "${_asset}" DIRECTORY)
-        if(ANDROID)
-            set(_asset_outdir "${MOBILE_ASSETS_DIR}/${_rel_dir}")
-            set(_asset_outfile "${MOBILE_ASSETS_DIR}/${_asset}")
-        else()
-            set(_asset_outdir "${CMAKE_BINARY_DIR}/$<CONFIGURATION>/${_rel_dir}")
-            set(_asset_outfile "${CMAKE_BINARY_DIR}/$<CONFIGURATION>/${_asset}")
-        endif()
-        add_custom_command(TARGET ${EXECUTABLE_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${_asset_outdir}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${ASSETS_ROOT}/${_asset}" "${_asset_outfile}")
-    endforeach()
 endif()
+# 资源统一放到可执行文件同目录：macOS 的 .app 里即 Contents/MacOS，
+# 与 CWD 对齐规则一致（不依赖 bundle Resources，避免 macOS 路径分叉）。
+foreach(_asset ${ASSET_FILES})
+    get_filename_component(_rel_dir "${_asset}" DIRECTORY)
+    if(ANDROID)
+        set(_asset_outdir "${MOBILE_ASSETS_DIR}/${_rel_dir}")
+        set(_asset_outfile "${MOBILE_ASSETS_DIR}/${_asset}")
+    else()
+        set(_asset_outdir "$<TARGET_FILE_DIR:${EXECUTABLE_NAME}>/${_rel_dir}")
+        set(_asset_outfile "$<TARGET_FILE_DIR:${EXECUTABLE_NAME}>/${_asset}")
+    endif()
+    add_custom_command(TARGET ${EXECUTABLE_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_asset_outdir}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ASSETS_ROOT}/${_asset}" "${_asset_outfile}")
+endforeach()
 
 # ---------- 平台特定属性 ----------
 set(RESOURCE_FILES "")
@@ -324,7 +331,16 @@ if(JOY_MODULE_CS AND TARGET joy_module_cs AND NOT EMSCRIPTEN)
         endforeach()
     else()
         # ---- 桌面自包含运行时（与 joy example_csharp 同一套部署方式）----
-        set(_runtime_dir "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
+        # 部署到可执行文件同目录：macOS 的 .app 里即 Contents/MacOS，
+        # hostfxr 的“自包含探测”按 CWD 找 libhostfxr.dylib，必须同目录。
+        # 这里手算路径而不用 $<TARGET_FILE_DIR>：自定义 target 的依赖图里
+        # 引用本 target 会形成 project_proxy2d → cs_deploy → sc_deploy 的环。
+        if(APPLE)
+            set(_runtime_dir
+                "${CMAKE_BINARY_DIR}/$<CONFIGURATION>/${EXECUTABLE_NAME}.app/Contents/MacOS")
+        else()
+            set(_runtime_dir "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
+        endif()
         include("${JOY_REPO_DIR}/cmake/JoySelfContained.cmake")
         joy_deploy_selfcontained(${EXECUTABLE_NAME} "${_cs_proj}" "${_cs_out}"
                                  "${_runtime_dir}" "$<IF:$<CONFIG:Debug>,Debug,Release>")
@@ -365,7 +381,7 @@ endif()
 # ---------- VS 调试：混合(.NET Core) 模式才能绑定 JoyGame.dll 断点 ----------
 if(MSVC)
     set_target_properties(${EXECUTABLE_NAME} PROPERTIES
-        VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>"
+        VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:${EXECUTABLE_NAME}>"
         VS_DEBUGGER_ENVIRONMENT "DOTNET_EnableDiagnostics=1\nCOMPlus_EnableDiagnostics=1"
         VS_USER_PROPS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Debugger.props")
     if(CMAKE_GENERATOR MATCHES "Visual Studio")
@@ -395,7 +411,7 @@ if(NOT ANDROID)
     enable_testing()
     add_test(NAME project_proxy2d_smoke COMMAND ${EXECUTABLE_NAME} --smoke 180)
     set_tests_properties(project_proxy2d_smoke PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>"
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:${EXECUTABLE_NAME}>"
         ENVIRONMENT "SDL_VIDEODRIVER=dummy")
 endif()
 

@@ -119,14 +119,10 @@ jobs:
           ( cd "$GITHUB_WORKSPACE" && "./$exe" --smoke 60 ) 2>&1 | tee smoke.log
           grep -Fq 'smoke finished' smoke.log \
             || { echo "::error::project_proxy2d smoke did not finish"; exit 1; }
-          # 自包含部署：确认运行时随包（hostfxr/coreclr + 裁剪后的 BCL），玩家无需装 .NET。
+          # 自包含部署：确认运行时随包（hostfxr/coreclr + 完整 BCL），玩家无需装 .NET。
+          # joy 的 JoySelfContained.cmake 已改为部署完整运行时（不再做 BCL 白名单裁剪）。
           grep -Fq 'command-line mode' smoke.log \
             || { echo "::error::did not load self-contained CoreCLR (command-line mode)"; exit 1; }
-          if [ "$RUNNER_OS" != "macOS" ]; then
-            bcl=$(find "$out" -maxdepth 1 -name 'System.*.dll' | wc -l)
-            echo "deployed BCL count: $bcl (whitelist ~29, not full 161)"
-            [ "$bcl" -lt 60 ] || { echo "::error::BCL not pruned (found $bcl)"; exit 1; }
-          fi
 
       - name: Ad-Hoc Codesign (macOS)
         if: runner.os == 'macOS'
